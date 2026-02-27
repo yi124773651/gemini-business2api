@@ -3,7 +3,7 @@ name: Build Refresh Worker Docker Image
 on:
   push:
     branches:
-      - main
+      - refresh-worker
     tags:
       - "v*"
   workflow_dispatch:
@@ -36,7 +36,7 @@ jobs:
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
 
       - name: Build and push
         uses: docker/build-push-action@v5
