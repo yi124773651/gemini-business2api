@@ -259,7 +259,16 @@ class CloudflareMailClient:
                         except Exception:
                             pass
 
-                # 先尝试从列表摘要提取
+                # 列表响应已包含 raw 字段，直接解析正文提取验证码
+                raw_in_list = msg.get("raw") or ""
+                if raw_in_list:
+                    body = self._extract_body_from_raw(raw_in_list)
+                    code = extract_verification_code(body)
+                    if code:
+                        self._log("info", f"✅ 找到验证码: {code}")
+                        return code
+
+                # 兜底：尝试从其他摘要字段提取
                 summary = (msg.get("subject") or "") + (msg.get("text") or "") + (msg.get("html") or "")
                 if summary:
                     code = extract_verification_code(summary)
