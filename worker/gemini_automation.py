@@ -158,135 +158,13 @@ class GeminiAutomation:
         page = ChromiumPage(options)
         page.set.timeouts(self.timeout)
 
-        # 反检测：始终注入（不限 headless）
+        # 最小化 JS 注入：只设置 window.chrome（不使用 Object.defineProperty，避免被 reCAPTCHA 检测）
         try:
             page.run_cdp("Page.addScriptToEvaluateOnNewDocument", source="""
-                // 隐藏 webdriver 标志
-                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-
-                // 伪造 plugins（返回真实 PluginArray 结构而非数字数组）
-                Object.defineProperty(navigator, 'plugins', {
-                    get: () => {
-                        const arr = [{
-                            name: 'Chrome PDF Plugin',
-                            description: 'Portable Document Format',
-                            filename: 'internal-pdf-viewer',
-                            length: 1,
-                            0: {type: 'application/x-google-chrome-pdf', suffixes: 'pdf', description: 'Portable Document Format'}
-                        }, {
-                            name: 'Chrome PDF Viewer',
-                            description: '',
-                            filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai',
-                            length: 1,
-                            0: {type: 'application/pdf', suffixes: 'pdf', description: ''}
-                        }, {
-                            name: 'Native Client',
-                            description: '',
-                            filename: 'internal-nacl-plugin',
-                            length: 2,
-                            0: {type: 'application/x-nacl', suffixes: '', description: 'Native Client Executable'},
-                            1: {type: 'application/x-pnacl', suffixes: '', description: 'Portable Native Client Executable'}
-                        }];
-                        arr.item = i => arr[i] || null;
-                        arr.namedItem = n => arr.find(p => p.name === n) || null;
-                        arr.refresh = () => {};
-                        return arr;
-                    }
-                });
-
-                Object.defineProperty(navigator, 'languages', {get: () => ['zh-CN', 'zh', 'en']});
-                window.chrome = {runtime: {}, loadTimes: () => ({}), csi: () => ({})};
-
-                // 硬件与平台信息
-                Object.defineProperty(navigator, 'maxTouchPoints', {get: () => 0});
-                Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});
-                Object.defineProperty(navigator, 'vendor', {get: () => 'Google Inc.'});
-                Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
-                Object.defineProperty(navigator, 'deviceMemory', {get: () => 8});
-
-                // permissions 伪造
-                const originalQuery = window.navigator.permissions.query;
-                window.navigator.permissions.query = (parameters) => (
-                    parameters.name === 'notifications' ?
-                        Promise.resolve({state: Notification.permission}) :
-                        originalQuery(parameters)
-                );
-
-                // Canvas 指纹噪声
-                const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
-                HTMLCanvasElement.prototype.toDataURL = function(type) {
-                    const ctx = this.getContext('2d');
-                    if (ctx) {
-                        const imgData = ctx.getImageData(0, 0, this.width, this.height);
-                        for (let i = 0; i < imgData.data.length; i += 4) {
-                            imgData.data[i] = imgData.data[i] + (Math.random() * 2 - 1) | 0;
-                        }
-                        ctx.putImageData(imgData, 0, 0);
-                    }
-                    return origToDataURL.apply(this, arguments);
-                };
-
-                // WebGL 指纹伪造
-                const getParam = WebGLRenderingContext.prototype.getParameter;
-                WebGLRenderingContext.prototype.getParameter = function(param) {
-                    if (param === 37445) return 'Google Inc. (NVIDIA)';
-                    if (param === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1060, OpenGL 4.5)';
-                    return getParam.apply(this, arguments);
-                };
-
-                // WebRTC IP 泄露防护（JS 层）
-                if (typeof RTCPeerConnection !== 'undefined') {
-                    const origRTC = RTCPeerConnection;
-                    window.RTCPeerConnection = function(...args) {
-                        if (args[0] && args[0].iceServers) {
-                            args[0].iceServers = [];
-                        }
-                        return new origRTC(...args);
-                    };
-                    window.RTCPeerConnection.prototype = origRTC.prototype;
-                }
-
-                // navigator.connection 伪造
-                if (!navigator.connection) {
-                    Object.defineProperty(navigator, 'connection', {
-                        get: () => ({
-                            effectiveType: '4g',
-                            rtt: 50,
-                            downlink: 10,
-                            saveData: false,
-                            type: 'wifi',
-                            addEventListener: () => {},
-                            removeEventListener: () => {},
-                        })
-                    });
-                }
-
-                // Battery API 伪造
-                if (navigator.getBattery) {
-                    navigator.getBattery = () => Promise.resolve({
-                        charging: true,
-                        chargingTime: 0,
-                        dischargingTime: Infinity,
-                        level: 1.0,
-                        addEventListener: () => {},
-                        removeEventListener: () => {},
-                    });
+                if (!window.chrome) {
+                    window.chrome = {runtime: {}, loadTimes: function(){return {}}, csi: function(){return {}}};
                 }
             """)
-        except Exception:
-            pass
-
-        # 设置 Accept-Language HTTP 请求头
-        try:
-            page.run_cdp("Network.setExtraHTTPHeaders", headers={
-                "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
-            })
-        except Exception:
-            pass
-
-        # WebRTC IP 泄露防护（CDP 层）
-        try:
-            page.run_cdp("WebRTC.enable")
         except Exception:
             pass
 
@@ -297,7 +175,7 @@ class GeminiAutomation:
         try:
             html = page.html or ""
             # 尝试从 meta 标签提取
-            m = re.search(r'name=["\']xsrf-token["\']\s+content=["\']([^"\']+-)["\']', html, re.IGNORECASE)
+            m = re.search(r'name=["\']xsrf-token["\']\s+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
             if m:
                 self._log("info", "🔑 从 meta 标签提取到 XSRF token")
                 return m.group(1)
@@ -383,10 +261,10 @@ class GeminiAutomation:
         if access_error:
             return access_error
 
-        # Step 3: 点击发送验证码按钮（最多3轮，指数退避间隔）
+        # Step 3: 点击发送验证码按钮（最多5轮，适度退避间隔）
         self._log("info", "📧 发送验证码...")
-        max_send_rounds = 3
-        send_round_delays = [15, 30, 60]
+        max_send_rounds = 5
+        send_round_delays = [10, 10, 15, 15, 20]
         send_round = 0
         while True:
             send_round += 1
@@ -519,9 +397,9 @@ class GeminiAutomation:
     def _click_send_code_button(self, page) -> bool:
         """点击发送验证码按钮（如果需要）"""
         time.sleep(random.uniform(1.5, 3))
-        max_send_attempts = 3
-        # 指数退避延迟序列（秒）
-        retry_delays = [15, 30, 60]
+        max_send_attempts = 5
+        # 适度退避延迟序列（秒）
+        retry_delays = [10, 10, 15, 15, 20]
 
         # 方法1: 直接通过ID查找
         direct_btn = page.ele("#sign-in-with-email", timeout=5)
