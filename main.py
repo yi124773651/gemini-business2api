@@ -181,13 +181,26 @@ clash_manager = None
 def load_proxy_control() -> dict:
     """加载代理控制配置"""
     default = {"master_enabled": False, "auth_enabled": True, "chat_enabled": True, "port": 17890}
-    if not storage.is_database_enabled():
-        return default
+    control_file = os.path.join(DATA_DIR, "proxy_control.json")
+
+    if storage.is_database_enabled():
+        try:
+            data = storage.load_proxy_control_sync()
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+
     try:
-        data = storage.load_proxy_control_sync()
-        return data if data else default
+        if os.path.exists(control_file):
+            with open(control_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
     except Exception:
-        return default
+        pass
+
+    return default
 
 def create_default_clash_config(path: str):
     """创建默认 Clash 配置文件"""
@@ -3473,37 +3486,36 @@ async def rotate_node_endpoint(request: Request):
 
 def save_proxy_control(data: dict):
     """保存代理控制状态"""
-    import json
-    import os
-    os.makedirs("data", exist_ok=True)
-    control_file = "data/proxy_control.json"
+    payload = {
+        "master_enabled": bool(data.get("master_enabled", False)),
+        "auth_enabled": bool(data.get("auth_enabled", True)),
+        "chat_enabled": bool(data.get("chat_enabled", True)),
+        "port": int(data.get("port", 17890)),
+    }
+
+    if storage.is_database_enabled():
+        try:
+            storage.save_proxy_control_sync(payload)
+        except Exception as e:
+            logger.warning(f"[PROXY] 保存代理控制到数据库失败: {e}")
+
+    os.makedirs(DATA_DIR, exist_ok=True)
+    control_file = os.path.join(DATA_DIR, "proxy_control.json")
     with open(control_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
 @app.get("/api/admin/proxy-control")
 @require_login()
 async def get_proxy_control(request: Request):
     """获取代理控制状态"""
-    import json
-    import os
-    control_file = "data/proxy_control.json"
-    if os.path.exists(control_file):
-        try:
-            with open(control_file, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {"master_enabled": False, "auth_enabled": False, "chat_enabled": False}
+    return load_proxy_control()
 
 
 @app.put("/api/admin/proxy-control")
 @require_login()
 async def update_proxy_control(request: Request, body: dict = Body(...)):
     """更新代理控制状态"""
-    import json
-    import os
-
     # 代理互斥：启用节点代理时自动清空系统代理
     master_enabled = body.get("master_enabled", False)
     if master_enabled:
@@ -3515,11 +3527,8 @@ async def update_proxy_control(request: Request, body: dict = Body(...)):
             config.basic.proxy_for_chat = ""
             # 这里不需要保存配置文件，因为前端会处理
 
-    os.makedirs("data", exist_ok=True)
-    control_file = "data/proxy_control.json"
     try:
-        with open(control_file, "w", encoding="utf-8") as f:
-            json.dump(body, f, ensure_ascii=False, indent=2)
+        save_proxy_control(body)
         return {"success": True}
     except Exception as e:
         raise HTTPException(500, f"保存失败: {e}")

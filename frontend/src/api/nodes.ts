@@ -42,6 +42,20 @@ export interface ImportClashRequest {
   use_for_chat?: boolean
 }
 
+export interface ImportSubscriptionRequest {
+  url: string
+}
+
+export interface ImportYamlRequest {
+  content: string
+}
+
+export interface ImportCountResponse {
+  success: boolean
+  count: number
+  message?: string
+}
+
 export const nodesApi = {
   list: () =>
     apiClient.get<never, { nodes: Node[] }>('/admin/nodes'),
@@ -63,4 +77,10 @@ export const nodesApi = {
 
   importClash: (data: ImportClashRequest) =>
     apiClient.post<never, { imported: number; nodes: Node[] }>('/admin/nodes/import/clash', data),
+
+  importSubscription: (data: ImportSubscriptionRequest) =>
+    apiClient.post<never, ImportCountResponse>('/api/admin/nodes/import-subscription', data),
+
+  importYaml: (data: ImportYamlRequest) =>
+    apiClient.post<never, ImportCountResponse>('/api/admin/nodes/import-yaml', data),
 }

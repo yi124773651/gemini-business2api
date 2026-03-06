@@ -13,14 +13,12 @@
           <ToggleSwitch v-model="proxyControl.master_enabled" @update:model-value="saveProxyControl" />
           <span class="text-sm text-foreground">代理总开关</span>
         </label>
-        <label class="flex items-center gap-3 cursor-pointer">
-          <input type="checkbox" v-model="proxyControl.auth_enabled" @change="saveProxyControl" class="h-5 w-5 rounded" />
-          <span class="text-sm text-muted-foreground">用于 Auth</span>
-        </label>
-        <label class="flex items-center gap-3 cursor-pointer">
-          <input type="checkbox" v-model="proxyControl.chat_enabled" @change="saveProxyControl" class="h-5 w-5 rounded" />
-          <span class="text-sm text-muted-foreground">用于 Chat</span>
-        </label>
+        <Checkbox v-model="proxyControl.auth_enabled" @update:modelValue="saveProxyControl">
+          用于 Auth
+        </Checkbox>
+        <Checkbox v-model="proxyControl.chat_enabled" @update:modelValue="saveProxyControl">
+          用于 Chat
+        </Checkbox>
         <div class="flex items-center gap-2">
           <span class="text-sm text-muted-foreground">端口:</span>
           <input v-model.number="proxyControl.port" @change="onPortChange" type="number" min="1024" max="65535" class="w-24 rounded-lg border border-input bg-background px-3 py-1 text-sm" />
@@ -44,7 +42,7 @@
         <textarea v-model="yamlContent" rows="6" placeholder="粘贴 Clash YAML 配置（包含 proxies 字段）" class="w-full rounded-2xl border border-input bg-background px-4 py-2 text-sm font-mono outline-none focus:border-primary resize-none"></textarea>
         <button @click="importYaml" :disabled="!yamlContent.trim()" class="self-end rounded-full bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">导入</button>
       </div>
-      <p v-if="importResult" class="mt-3 text-xs text-emerald-500">✓ {{ importResult }}</p>
+      <p v-if="importResult" class="mt-3 text-xs text-primary">✓ {{ importResult }}</p>
       <p v-if="importError" class="mt-3 text-xs text-destructive">✗ {{ importError }}</p>
     </section>
 
@@ -57,13 +55,11 @@
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <input v-model="searchQuery" placeholder="搜索节点..." class="rounded-full border border-border bg-background px-4 py-2 text-sm w-48" />
-          <select v-model="sortBy" class="rounded-full border border-border bg-background px-3 py-2 text-sm">
-            <option value="default">默认排序</option>
-            <option value="success_rate">成功率</option>
-            <option value="success_count">成功次数</option>
-            <option value="fail_count">失败次数</option>
-            <option value="name">名称</option>
-          </select>
+          <SelectMenu
+            v-model="sortBy"
+            :options="sortOptions"
+            class="!w-36"
+          />
           <button @click="toggleSelectAll" class="rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-primary hover:text-primary">
             {{ allSelected ? '取消全选' : '全选' }}
           </button>
@@ -96,13 +92,16 @@
       <div v-else class="divide-y divide-border">
         <div v-for="node in sortedNodes" :key="node.id" class="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:gap-4">
           <!-- 复选框 -->
-          <input type="checkbox" :checked="selectedIds.includes(node.id)" @change="toggleNode(node.id)" class="h-4 w-4 rounded shrink-0" />
+          <Checkbox
+            :modelValue="selectedIds.includes(node.id)"
+            @update:modelValue="(checked) => setNodeSelection(node.id, checked)"
+          />
 
           <!-- 状态指示 -->
           <div class="flex items-center gap-3 min-w-0">
             <span
               class="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-              :class="node.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/40'"
+              :class="node.enabled ? 'bg-primary' : 'bg-muted-foreground/40'"
             ></span>
             <div class="min-w-0">
               <p class="truncate text-sm font-medium text-foreground">{{ node.name }}</p>
@@ -112,21 +111,21 @@
 
           <!-- 标签 -->
           <div class="flex flex-wrap gap-1.5 ml-5 sm:ml-0">
-            <span v-if="node.use_for_auth" class="rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-600 dark:text-blue-400">Auth</span>
-            <span v-if="node.use_for_chat" class="rounded-full bg-purple-500/10 px-2 py-0.5 text-[11px] text-purple-600 dark:text-purple-400">Chat</span>
+            <span v-if="node.use_for_auth" class="inline-flex items-center rounded-full border border-border bg-accent px-2 py-0.5 text-[11px] text-accent-foreground">Auth</span>
+            <span v-if="node.use_for_chat" class="inline-flex items-center rounded-full border border-border bg-accent px-2 py-0.5 text-[11px] text-accent-foreground">Chat</span>
           </div>
 
           <!-- 成功率 -->
           <div class="ml-5 sm:ml-auto flex items-center gap-4 shrink-0">
             <div class="text-center min-w-[80px]">
               <div class="flex items-center gap-1 text-xs text-muted-foreground justify-center">
-                <span class="text-emerald-500 font-medium">{{ node.success }}</span>
+                <span class="text-primary font-medium">{{ node.success }}</span>
                 <span>/</span>
-                <span class="text-red-500 font-medium">{{ node.fail }}</span>
+                <span class="text-destructive font-medium">{{ node.fail }}</span>
               </div>
               <div class="mt-1 h-1 w-20 rounded-full bg-muted overflow-hidden">
                 <div
-                  class="h-full rounded-full bg-emerald-500 transition-all"
+                  class="h-full rounded-full bg-primary transition-all"
                   :style="{ width: successRatePercent(node) }"
                 ></div>
               </div>
@@ -136,8 +135,10 @@
             <!-- 操作按钮 -->
             <div class="flex items-center gap-1">
               <button
+                type="button"
                 @click="toggleEnabled(node)"
                 :title="node.enabled ? '禁用' : '启用'"
+                :aria-label="node.enabled ? '禁用节点' : '启用节点'"
                 class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
               >
                 <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
@@ -146,8 +147,10 @@
                 </svg>
               </button>
               <button
+                type="button"
                 @click="openEditNode(node)"
                 title="编辑"
+                aria-label="编辑节点"
                 class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
               >
                 <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
@@ -155,17 +158,21 @@
                 </svg>
               </button>
               <button
+                type="button"
                 @click="confirmResetStats(node)"
                 title="重置统计"
-                class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-amber-500 hover:text-amber-500"
+                aria-label="重置统计"
+                class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary"
               >
                 <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
                   <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
                 </svg>
               </button>
               <button
+                type="button"
                 @click="confirmDelete(node)"
                 title="删除"
+                aria-label="删除节点"
                 class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:border-destructive hover:text-destructive"
               >
                 <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
@@ -194,19 +201,16 @@
               <input v-model="nodeDialog.form.url" type="text" placeholder="http://127.0.0.1:17700"
                 class="mt-1 w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm font-mono outline-none focus:border-primary" />
             </div>
-            <div class="flex items-center gap-6">
-              <label class="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="checkbox" v-model="nodeDialog.form.use_for_auth" class="rounded" />
-                <span class="text-muted-foreground">用于 Auth</span>
-              </label>
-              <label class="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="checkbox" v-model="nodeDialog.form.use_for_chat" class="rounded" />
-                <span class="text-muted-foreground">用于 Chat</span>
-              </label>
-              <label class="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="checkbox" v-model="nodeDialog.form.enabled" class="rounded" />
-                <span class="text-muted-foreground">启用</span>
-              </label>
+            <div class="flex flex-wrap items-center gap-4">
+              <Checkbox v-model="nodeDialog.form.use_for_auth">
+                用于 Auth
+              </Checkbox>
+              <Checkbox v-model="nodeDialog.form.use_for_chat">
+                用于 Chat
+              </Checkbox>
+              <Checkbox v-model="nodeDialog.form.enabled">
+                启用
+              </Checkbox>
             </div>
             <p v-if="nodeDialog.error" class="text-xs text-destructive">{{ nodeDialog.error }}</p>
           </div>
@@ -221,75 +225,6 @@
       </div>
     </Teleport>
 
-    <!-- 导入 URL 弹窗 -->
-    <Teleport to="body">
-      <div v-if="importUrlsDialog.open" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 px-4">
-        <div class="w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-xl">
-          <p class="text-sm font-medium text-foreground">批量导入代理 URL</p>
-          <p class="mt-1 text-xs text-muted-foreground">每行一个 URL，支持 http:// https:// socks5:// socks5h:// 格式</p>
-          <textarea v-model="importUrlsDialog.text" rows="8"
-            placeholder="http://127.0.0.1:17700&#10;socks5://user:pass@host:port"
-            class="mt-3 w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm font-mono outline-none focus:border-primary resize-none" />
-          <div class="mt-3 flex items-center gap-6">
-            <label class="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" v-model="importUrlsDialog.use_for_auth" class="rounded" />
-              <span class="text-muted-foreground">用于 Auth</span>
-            </label>
-            <label class="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" v-model="importUrlsDialog.use_for_chat" class="rounded" />
-              <span class="text-muted-foreground">用于 Chat</span>
-            </label>
-          </div>
-          <p v-if="importUrlsDialog.result" class="mt-2 text-xs text-emerald-500">{{ importUrlsDialog.result }}</p>
-          <p v-if="importUrlsDialog.error" class="mt-2 text-xs text-destructive">{{ importUrlsDialog.error }}</p>
-          <div class="mt-6 flex items-center justify-end gap-3">
-            <button @click="importUrlsDialog.open = false" class="rounded-full border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground">取消</button>
-            <button @click="submitImportUrls" :disabled="importUrlsDialog.submitting"
-              class="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
-              {{ importUrlsDialog.submitting ? '导入中...' : '导入' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
-    <!-- 导入 Clash YAML 弹窗 -->
-    <Teleport to="body">
-      <div v-if="importClashDialog.open" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 px-4">
-        <div class="w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-xl">
-          <p class="text-sm font-medium text-foreground">从 Clash YAML 导入节点</p>
-          <p class="mt-1 text-xs text-muted-foreground">粘贴 Clash proxies 配置（含 proxies: 的 YAML），将为每个节点创建记录，代理 URL 指向本地 Clash 端口</p>
-          <textarea v-model="importClashDialog.yaml" rows="8"
-            placeholder="proxies:&#10;  - name: HK-1&#10;    type: vless&#10;    ..."
-            class="mt-3 w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm font-mono outline-none focus:border-primary resize-none" />
-          <div class="mt-3 flex flex-wrap items-center gap-4">
-            <div class="flex items-center gap-2">
-              <label class="text-xs text-muted-foreground shrink-0">本地端口</label>
-              <input v-model.number="importClashDialog.local_proxy_port" type="number" min="1" max="65535"
-                class="w-24 rounded-2xl border border-input bg-background px-3 py-1 text-sm outline-none focus:border-primary" />
-            </div>
-            <label class="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" v-model="importClashDialog.use_for_auth" class="rounded" />
-              <span class="text-muted-foreground">Auth</span>
-            </label>
-            <label class="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" v-model="importClashDialog.use_for_chat" class="rounded" />
-              <span class="text-muted-foreground">Chat</span>
-            </label>
-          </div>
-          <p v-if="importClashDialog.result" class="mt-2 text-xs text-emerald-500">{{ importClashDialog.result }}</p>
-          <p v-if="importClashDialog.error" class="mt-2 text-xs text-destructive">{{ importClashDialog.error }}</p>
-          <div class="mt-6 flex items-center justify-end gap-3">
-            <button @click="importClashDialog.open = false" class="rounded-full border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground">取消</button>
-            <button @click="submitImportClash" :disabled="importClashDialog.submitting"
-              class="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
-              {{ importClashDialog.submitting ? '导入中...' : '导入' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
     <!-- 预览配置弹窗 -->
     <Teleport to="body">
       <div v-if="configPreview.open" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 p-8">
@@ -298,8 +233,8 @@
             <p class="text-sm font-medium text-foreground">运行时 YAML 配置预览</p>
             <button @click="configPreview.open = false" class="rounded-full border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground">关闭</button>
           </div>
-          <div v-if="configPreview.content" class="flex-1 overflow-auto rounded-2xl border border-border bg-slate-900 p-4">
-            <pre class="text-sm font-mono leading-relaxed text-slate-100 whitespace-pre" v-html="highlightYaml(configPreview.content)"></pre>
+          <div v-if="configPreview.content" class="flex-1 overflow-auto rounded-2xl border border-border bg-muted p-4">
+            <pre class="text-sm font-mono leading-relaxed text-foreground whitespace-pre">{{ configPreview.content }}</pre>
           </div>
           <p v-else-if="configPreview.loading" class="text-sm text-muted-foreground">加载中...</p>
           <p v-else-if="configPreview.error" class="text-sm text-destructive">{{ configPreview.error }}</p>
@@ -319,28 +254,42 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive, watch, computed } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { nodesApi, type Node } from '@/api/nodes'
+import { settingsApi } from '@/api/settings'
+import { proxyControlApi, type ProxyControl } from '@/api/proxyControl'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
+import SelectMenu from '@/components/ui/SelectMenu.vue'
+import Checkbox from '@/components/ui/Checkbox.vue'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
-import hljs from 'highlight.js/lib/core'
-import yaml from 'highlight.js/lib/languages/yaml'
-import 'highlight.js/styles/atom-one-dark.css'
-
-hljs.registerLanguage('yaml', yaml)
+import { useToast } from '@/composables/useToast'
 
 const nodes = ref<Node[]>([])
 const isLoading = ref(false)
 const confirmDialog = useConfirmDialog()
-const sortBy = ref(localStorage.getItem('nodes_sort_by') || 'default')
+const toast = useToast()
+
+type SortType = 'default' | 'success_rate' | 'success_count' | 'fail_count' | 'name'
+
+const SORT_VALUES: SortType[] = ['default', 'success_rate', 'success_count', 'fail_count', 'name']
+const savedSort = localStorage.getItem('nodes_sort_by') as SortType | null
+const sortBy = ref<SortType>(savedSort && SORT_VALUES.includes(savedSort) ? savedSort : 'default')
+const sortOptions = [
+  { label: '默认排序', value: 'default' },
+  { label: '成功率', value: 'success_rate' },
+  { label: '成功次数', value: 'success_count' },
+  { label: '失败次数', value: 'fail_count' },
+  { label: '名称', value: 'name' },
+]
+
 watch(sortBy, (val) => localStorage.setItem('nodes_sort_by', val))
 const searchQuery = ref('')
 const selectedIds = ref<string[]>([])
 const importTab = ref<'subscription' | 'yaml'>('subscription')
 
 // 代理控制
-const proxyControl = reactive({
+const proxyControl = reactive<ProxyControl>({
   master_enabled: false,
   auth_enabled: false,
   chat_enabled: false,
@@ -358,9 +307,17 @@ const sortedNodes = computed(() => {
     const q = searchQuery.value.toLowerCase()
     list = list.filter(n => n.name.toLowerCase().includes(q) || n.url.toLowerCase().includes(q))
   }
-  if (sortBy.value === 'success_rate') return list.sort((a, b) => (b.success_rate || 0) - (a.success_rate || 0))
-  if (sortBy.value === 'success_count') return list.sort((a, b) => (b.success_count || 0) - (a.success_count || 0))
-  if (sortBy.value === 'fail_count') return list.sort((a, b) => (a.fail_count || 0) - (b.fail_count || 0))
+  if (sortBy.value === 'success_rate') {
+    return list.sort((a, b) => {
+      const aTotal = a.success + a.fail
+      const bTotal = b.success + b.fail
+      const aRate = aTotal > 0 ? a.success / aTotal : 1
+      const bRate = bTotal > 0 ? b.success / bTotal : 1
+      return bRate - aRate
+    })
+  }
+  if (sortBy.value === 'success_count') return list.sort((a, b) => b.success - a.success)
+  if (sortBy.value === 'fail_count') return list.sort((a, b) => b.fail - a.fail)
   if (sortBy.value === 'name') return list.sort((a, b) => a.name.localeCompare(b.name))
   return list
 })
@@ -375,30 +332,52 @@ function toggleSelectAll() {
   }
 }
 
-function toggleNode(id: string) {
-  const index = selectedIds.value.indexOf(id)
-  if (index > -1) {
-    selectedIds.value.splice(index, 1)
-  } else {
+function setNodeSelection(id: string, checked: boolean) {
+  const exists = selectedIds.value.includes(id)
+  if (checked && !exists) {
     selectedIds.value.push(id)
+  } else if (!checked && exists) {
+    selectedIds.value = selectedIds.value.filter(item => item !== id)
   }
+}
+
+function clearSelectedIds() {
+  const existingIds = new Set(nodes.value.map(item => item.id))
+  selectedIds.value = selectedIds.value.filter(id => existingIds.has(id))
+}
+
+async function refreshNodes() {
+  await loadNodes()
+  clearSelectedIds()
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+  return fallback
 }
 
 async function deleteSelected() {
   if (selectedIds.value.length === 0) return
   const confirmed = await confirmDialog.ask({
     title: '确认删除',
-    message: `确定要删除选中的 ${selectedIds.value.length} 个节点吗？`
+    message: `确定要删除选中的 ${selectedIds.value.length} 个节点吗？`,
   })
   if (!confirmed) return
+
+  const ids = [...selectedIds.value]
   try {
-    for (const id of selectedIds.value) {
+    for (const id of ids) {
       await nodesApi.delete(id)
     }
     selectedIds.value = []
-    loadNodes()
-  } catch (e) {
-    console.error('删除失败:', e)
+    await refreshNodes()
+    toast.success(`已删除 ${ids.length} 个节点`)
+  } catch (error) {
+    const message = getErrorMessage(error, '删除节点失败')
+    toast.error(message)
+    console.error('删除失败:', error)
   }
 }
 
@@ -407,7 +386,7 @@ const configPreview = reactive({
   open: false,
   loading: false,
   content: '',
-  error: ''
+  error: '',
 })
 
 async function previewConfig() {
@@ -416,11 +395,10 @@ async function previewConfig() {
   configPreview.content = ''
   configPreview.error = ''
   try {
-    const res = await fetch('/api/admin/proxy-config')
-    if (!res.ok) throw new Error('加载失败')
-    configPreview.content = await res.text()
-  } catch (e: any) {
-    configPreview.error = e.message || '加载失败'
+    configPreview.content = await proxyControlApi.getConfigPreview()
+  } catch (error) {
+    configPreview.error = getErrorMessage(error, '加载失败')
+    toast.error(configPreview.error)
   } finally {
     configPreview.loading = false
   }
@@ -437,82 +415,70 @@ async function loadProxyControl() {
   if (cached) {
     try {
       Object.assign(proxyControl, JSON.parse(cached))
-    } catch (e) {
-      console.error('Failed to parse cached proxy control:', e)
+    } catch (error) {
+      console.error('Failed to parse cached proxy control:', error)
     }
   }
   try {
-    const res = await fetch('/api/admin/proxy-control')
-    const data = await res.json()
+    const data = await proxyControlApi.get()
     Object.assign(proxyControl, data)
-  } catch (e) {
-    console.error(e)
+  } catch (error) {
+    console.error(error)
   }
 }
 
-async function saveProxyControl() {
+async function saveProxyControl(): Promise<boolean> {
   try {
     let hasSystemProxy = false
-    // 如果启用节点代理，先检查并清空系统代理
     if (proxyControl.master_enabled) {
-      const settingsRes = await fetch('/api/admin/settings')
-      const settings = await settingsRes.json()
+      const settings = await settingsApi.get()
       hasSystemProxy = !!(settings.basic?.proxy_for_auth || settings.basic?.proxy_for_chat)
 
       if (hasSystemProxy) {
-        // 自动清空系统代理并保存
         settings.basic.proxy_for_auth = ''
         settings.basic.proxy_for_chat = ''
-        await fetch('/api/admin/settings', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(settings),
-        })
+        await settingsApi.update(settings)
       }
     }
 
-    const res = await fetch('/api/admin/proxy-control', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(proxyControl),
-    })
+    await proxyControlApi.update({ ...proxyControl })
 
-    if (res.ok && proxyControl.master_enabled && hasSystemProxy) {
-      alert('节点代理已启用，系统代理已自动关闭')
+    if (proxyControl.master_enabled && hasSystemProxy) {
+      toast.info('节点代理已启用，系统代理已自动关闭')
     }
-  } catch (e) {
-    console.error(e)
+    return true
+  } catch (error) {
+    const message = getErrorMessage(error, '代理配置保存失败')
+    toast.error(message)
+    console.error(error)
+    return false
   }
 }
 
-function onPortChange() {
-  saveProxyControl()
-  alert('端口已保存，需要重启程序后生效')
+async function onPortChange() {
+  const saved = await saveProxyControl()
+  if (saved) {
+    toast.warning('端口已保存，需要重启程序后生效')
+  }
 }
 
 async function importSubscription() {
   importResult.value = ''
   importError.value = ''
   try {
-    const res = await fetch('/api/admin/nodes/import-subscription', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: subscriptionUrl.value }),
-    })
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
-      throw new Error(error.detail || '导入失败')
-    }
-    const data = await res.json()
+    const data = await nodesApi.importSubscription({ url: subscriptionUrl.value.trim() })
     if (data.success) {
       importResult.value = `成功导入 ${data.count} 个节点`
       subscriptionUrl.value = ''
-      loadNodes()
-    } else {
-      importError.value = data.message || '导入失败'
+      await refreshNodes()
+      toast.success(importResult.value)
+      return
     }
-  } catch (e: any) {
-    importError.value = e.message || '导入失败'
+    importError.value = data.message || '导入失败'
+    toast.error(importError.value)
+  } catch (error) {
+    importError.value = getErrorMessage(error, '导入失败')
+    toast.error(importError.value)
   }
 }
 
@@ -520,25 +486,19 @@ async function importYaml() {
   importResult.value = ''
   importError.value = ''
   try {
-    const res = await fetch('/api/admin/nodes/import-yaml', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: yamlContent.value }),
-    })
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
-      throw new Error(error.detail || '导入失败')
-    }
-    const data = await res.json()
+    const data = await nodesApi.importYaml({ content: yamlContent.value.trim() })
     if (data.success) {
       importResult.value = `成功导入 ${data.count} 个节点`
       yamlContent.value = ''
-      loadNodes()
-    } else {
-      importError.value = data.message || '导入失败'
+      await refreshNodes()
+      toast.success(importResult.value)
+      return
     }
-  } catch (e: any) {
-    importError.value = e.message || '导入失败'
+    importError.value = data.message || '导入失败'
+    toast.error(importError.value)
+  } catch (error) {
+    importError.value = getErrorMessage(error, '导入失败')
+    toast.error(importError.value)
   }
 }
 
@@ -563,16 +523,18 @@ async function loadNodes() {
   try {
     const res = await nodesApi.list()
     nodes.value = res.nodes || []
-  } catch (e) {
-    console.error(e)
+  } catch (error) {
+    nodes.value = []
+    toast.error(getErrorMessage(error, '加载节点列表失败'))
+    console.error(error)
   } finally {
     isLoading.value = false
   }
 }
 
 onMounted(() => {
-  loadNodes()
-  loadProxyControl()
+  void loadNodes()
+  void loadProxyControl()
 })
 
 // ---------- 添加/编辑节点弹窗 ----------
@@ -626,9 +588,10 @@ async function submitNode() {
       await nodesApi.create(nodeDialog.form)
     }
     nodeDialog.open = false
-    await loadNodes()
-  } catch (e: any) {
-    nodeDialog.error = e?.response?.data?.detail || '操作失败'
+    await refreshNodes()
+    toast.success(nodeDialog.isEdit ? '节点已更新' : '节点已添加')
+  } catch (error) {
+    nodeDialog.error = getErrorMessage(error, '操作失败')
   } finally {
     nodeDialog.submitting = false
   }
@@ -639,9 +602,10 @@ async function submitNode() {
 async function toggleEnabled(node: Node) {
   try {
     await nodesApi.update(node.id, { enabled: !node.enabled })
-    await loadNodes()
-  } catch (e) {
-    console.error(e)
+    await refreshNodes()
+  } catch (error) {
+    toast.error(getErrorMessage(error, '节点状态更新失败'))
+    console.error(error)
   }
 }
 
@@ -655,9 +619,11 @@ async function confirmDelete(node: Node) {
   if (!ok) return
   try {
     await nodesApi.delete(node.id)
-    await loadNodes()
-  } catch (e) {
-    console.error(e)
+    await refreshNodes()
+    toast.success('节点已删除')
+  } catch (error) {
+    toast.error(getErrorMessage(error, '删除节点失败'))
+    console.error(error)
   }
 }
 
@@ -671,96 +637,11 @@ async function confirmResetStats(node: Node) {
   if (!ok) return
   try {
     await nodesApi.resetStats(node.id)
-    await loadNodes()
-  } catch (e) {
-    console.error(e)
+    await refreshNodes()
+    toast.success('统计已重置')
+  } catch (error) {
+    toast.error(getErrorMessage(error, '重置统计失败'))
+    console.error(error)
   }
-}
-
-// ---------- 批量导入 URL ----------
-
-const importUrlsDialog = reactive({
-  open: false,
-  submitting: false,
-  error: '',
-  result: '',
-  text: '',
-  use_for_auth: true,
-  use_for_chat: true,
-})
-
-function openImportUrls() {
-  importUrlsDialog.open = true
-  importUrlsDialog.text = ''
-  importUrlsDialog.error = ''
-  importUrlsDialog.result = ''
-}
-
-async function submitImportUrls() {
-  importUrlsDialog.error = ''
-  importUrlsDialog.result = ''
-  if (!importUrlsDialog.text.trim()) { importUrlsDialog.error = '内容不能为空'; return }
-  importUrlsDialog.submitting = true
-  try {
-    const res = await nodesApi.importUrls({
-      text: importUrlsDialog.text,
-      use_for_auth: importUrlsDialog.use_for_auth,
-      use_for_chat: importUrlsDialog.use_for_chat,
-    })
-    importUrlsDialog.result = `成功导入 ${res.imported} 个节点`
-    await loadNodes()
-    if (res.imported > 0) setTimeout(() => { importUrlsDialog.open = false }, 1200)
-  } catch (e: any) {
-    importUrlsDialog.error = e?.response?.data?.detail || '导入失败'
-  } finally {
-    importUrlsDialog.submitting = false
-  }
-}
-
-// ---------- 批量导入 Clash YAML ----------
-
-const importClashDialog = reactive({
-  open: false,
-  submitting: false,
-  error: '',
-  result: '',
-  yaml: '',
-  local_proxy_port: 17700,
-  use_for_auth: true,
-  use_for_chat: true,
-})
-
-function openImportClash() {
-  importClashDialog.open = true
-  importClashDialog.yaml = ''
-  importClashDialog.error = ''
-  importClashDialog.result = ''
-}
-
-async function submitImportClash() {
-  importClashDialog.error = ''
-  importClashDialog.result = ''
-  if (!importClashDialog.yaml.trim()) { importClashDialog.error = 'YAML 内容不能为空'; return }
-  importClashDialog.submitting = true
-  try {
-    const res = await nodesApi.importClash({
-      yaml: importClashDialog.yaml,
-      local_proxy_port: importClashDialog.local_proxy_port,
-      use_for_auth: importClashDialog.use_for_auth,
-      use_for_chat: importClashDialog.use_for_chat,
-    })
-    importClashDialog.result = `成功导入 ${res.imported} 个节点`
-    await loadNodes()
-    if (res.imported > 0) setTimeout(() => { importClashDialog.open = false }, 1200)
-  } catch (e: any) {
-    importClashDialog.error = e?.response?.data?.detail || '导入失败'
-  } finally {
-    importClashDialog.submitting = false
-  }
-}
-
-// YAML 语法高亮
-function highlightYaml(content: string): string {
-  return hljs.highlight(content, { language: 'yaml' }).value
 }
 </script>

@@ -51,15 +51,10 @@
                     <span class="text-xs text-muted-foreground">系统代理总开关</span>
                     <HelpTip text="启用后可配置账户/聊天代理。与节点代理互斥" />
                   </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
-                    <input
-                      v-model="systemProxyEnabled"
-                      type="checkbox"
-                      :disabled="nodeProxyEnabled"
-                      class="sr-only peer"
-                    />
-                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 peer-disabled:opacity-50 peer-disabled:cursor-not-allowed"></div>
-                  </label>
+                  <ToggleSwitch
+                    v-model="systemProxyEnabled"
+                    :disabled="nodeProxyEnabled"
+                  />
                 </div>
 
                 <div class="flex items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -86,8 +81,8 @@
                   class="w-full rounded-2xl border border-input bg-background px-3 py-2 text-sm"
                   placeholder="http://127.0.0.1:7890 | no_proxy=localhost,127.0.0.1"
                 />
-                <div v-if="nodeProxyEnabled" class="mt-2 rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3">
-                  <p class="text-xs text-amber-600 dark:text-amber-400">⚠️ 节点代理已启用，系统代理已自动禁用</p>
+                <div v-if="nodeProxyEnabled" class="mt-2 rounded-2xl border border-border bg-accent p-3">
+                  <p class="text-xs text-accent-foreground">节点代理已启用，系统代理已自动禁用</p>
                 </div>
               </div>
             </div>
@@ -437,8 +432,10 @@ import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/settings'
 import { useToast } from '@/composables/useToast'
 import { defaultMailProvider, mailProviderOptions } from '@/constants/mailProviders'
+import { proxyControlApi } from '@/api/proxyControl'
 import SelectMenu from '@/components/ui/SelectMenu.vue'
 import Checkbox from '@/components/ui/Checkbox.vue'
+import ToggleSwitch from '@/components/ui/ToggleSwitch.vue'
 import HelpTip from '@/components/ui/HelpTip.vue'
 import type { Settings } from '@/types/api'
 
@@ -455,9 +452,8 @@ const systemProxyEnabled = ref(false)
 // 检查节点代理状态
 async function checkNodeProxyStatus() {
   try {
-    const res = await fetch('/api/admin/proxy-control')
-    const data = await res.json()
-    nodeProxyEnabled.value = data.enabled || false
+    const data = await proxyControlApi.get()
+    nodeProxyEnabled.value = data.master_enabled || false
   } catch (e) {
     nodeProxyEnabled.value = false
   }
@@ -471,10 +467,11 @@ watch(systemProxyEnabled, async (enabled, oldEnabled) => {
     // 启用系统代理时，自动关闭节点代理
     if (nodeProxyEnabled.value) {
       try {
-        await fetch('/api/admin/proxy-control', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ master_enabled: false, auth_enabled: false, chat_enabled: false, port: 7890 }),
+        await proxyControlApi.update({
+          master_enabled: false,
+          auth_enabled: false,
+          chat_enabled: false,
+          port: 7890,
         })
         nodeProxyEnabled.value = false
         toast.success('系统代理已启用，节点代理已自动关闭')

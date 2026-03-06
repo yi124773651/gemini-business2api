@@ -2,6 +2,8 @@
 export { authApi } from './auth'
 export { accountsApi } from './accounts'
 export { settingsApi } from './settings'
+export { nodesApi } from './nodes'
+export { proxyControlApi } from './proxyControl'
 export { logsApi } from './logs'
 export { monitorApi } from './monitor'
 export { statsApi } from './stats'
