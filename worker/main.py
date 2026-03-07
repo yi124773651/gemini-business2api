@@ -77,12 +77,12 @@ async def main() -> None:
     else:
         logger.info("[INIT] child reaper not needed (non-POSIX or no SIGCHLD)")
 
-    # Initialize storage (triggers DB connection / table creation)
+    # Initialize storage backend (database or remote project)
     from worker import storage
     if not storage.is_database_enabled():
-        logger.error("[INIT] DATABASE_URL not configured, cannot start")
+        logger.error("[INIT] storage backend not configured, set DATABASE_URL or REMOTE_PROJECT_BASE_URL")
         sys.exit(1)
-    logger.info("[INIT] database backend: %s", storage._get_backend())
+    logger.info("[INIT] storage backend: %s", storage.get_storage_mode())
 
     # Initialize config (reads from DB)
     # This import triggers ConfigManager.__init__ which calls storage
@@ -122,6 +122,14 @@ async def main() -> None:
         env_overrides.append(f"REGISTER_DOMAIN={os.getenv('REGISTER_DOMAIN')}")
     if os.getenv("REGISTER_DEFAULT_COUNT") is not None:
         env_overrides.append(f"REGISTER_DEFAULT_COUNT={os.getenv('REGISTER_DEFAULT_COUNT')}")
+    if os.getenv("REMOTE_PROJECT_BASE_URL") is not None:
+        env_overrides.append(f"REMOTE_PROJECT_BASE_URL={os.getenv('REMOTE_PROJECT_BASE_URL')}")
+    if os.getenv("REMOTE_PROJECT_PASSWORD") is not None:
+        env_overrides.append("REMOTE_PROJECT_PASSWORD=***")
+    if os.getenv("REMOTE_PROJECT_VERIFY_SSL") is not None:
+        env_overrides.append(f"REMOTE_PROJECT_VERIFY_SSL={os.getenv('REMOTE_PROJECT_VERIFY_SSL')}")
+    if os.getenv("REMOTE_PROJECT_TIMEOUT_SECONDS") is not None:
+        env_overrides.append(f"REMOTE_PROJECT_TIMEOUT_SECONDS={os.getenv('REMOTE_PROJECT_TIMEOUT_SECONDS')}")
     if env_overrides:
         logger.info("[INIT] env overrides active: %s", ", ".join(env_overrides))
     else:

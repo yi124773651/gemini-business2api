@@ -211,11 +211,14 @@ class ConfigManager:
                 logger.warning("[CONFIG] invalid REGISTER_DEFAULT_COUNT=%r, ignored", env_register_count)
 
     def _load_from_db(self) -> dict:
-        """Load config from database (allows empty config)."""
+        """Load config from storage backend (database or remote project)."""
         if storage.is_database_enabled():
             try:
                 data = storage.load_settings_sync()
                 if data is None:
+                    mode = storage.get_storage_mode()
+                    if mode == "remote":
+                        raise RuntimeError("Remote project settings unavailable")
                     logger.warning("[WARN] No settings found (empty DB or connection issue), using defaults")
                     return {}
                 if isinstance(data, dict):

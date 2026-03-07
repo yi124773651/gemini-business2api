@@ -290,3 +290,36 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 30
 ```
+
+## Remote Beta Mode (local worker + remote beta)
+
+`refresh-worker` now supports a remote project mode.  
+In this mode, local worker executes browser automation locally, but account/settings data is read/written through remote beta admin APIs.
+
+Required environment variables:
+
+```env
+REMOTE_PROJECT_BASE_URL=https://your-beta-domain.example
+REMOTE_PROJECT_PASSWORD=your_admin_key
+```
+
+Optional:
+
+```env
+REMOTE_PROJECT_VERIFY_SSL=true
+REMOTE_PROJECT_TIMEOUT_SECONDS=30
+```
+
+When `REMOTE_PROJECT_BASE_URL` is set, storage backend switches to `remote` automatically.
+
+Remote API endpoints used:
+
+- `POST /login`
+- `GET /admin/settings`
+- `GET /admin/accounts-config`
+- `PUT /admin/accounts-config`
+
+This is the recommended setup for:
+
+- Remote deployment: `beta` (public/admin service)
+- Local machine: `refresh-worker` (browser execution node)
