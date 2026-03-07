@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from worker import storage
 from worker.config import config, config_manager
+from worker.local_lock import LocalFileLock
 from worker.proxy_utils import parse_proxy_setting
 
 logger = logging.getLogger("gemini.refresh")
@@ -97,6 +98,7 @@ class RefreshService:
         self._cancel_hooks_lock = threading.Lock()
         self._refresh_timestamps: Dict[str, float] = {}
         self._triggered_today: set = set()
+        self._cross_process_lock = LocalFileLock(os.path.join("data", "automation.lock"))
 
     # ---- logging helpers ----
 
@@ -156,6 +158,18 @@ class RefreshService:
             storage.save_task_history_entry_sync(task.to_dict())
         except Exception:
             pass
+
+    def _request_cancel_current_task(self, reason: str) -> None:
+        task = self._current_task
+        if not task or task.cancel_requested:
+            return
+        task.cancel_requested = True
+        task.cancel_reason = reason
+        try:
+            self._append_log(task, "warning", f"cancel requested: {reason}")
+        except TaskCancelledError:
+            pass
+        self._fire_cancel_hooks(task.id)
 
     # ---- accounts loading ----
 
@@ -629,9 +643,17 @@ class RefreshService:
             return summary
 
         async with self._round_lock:
-            round_summary = await self._run_refresh_round()
-            summary.update(round_summary)
-            return summary
+            if not self._cross_process_lock.acquire(blocking=False):
+                summary["skipped"] = True
+                summary["reason"] = "local automation is busy in another process"
+                logger.warning("[REFRESH] run_once skipped: local automation lock is busy")
+                return summary
+            try:
+                round_summary = await self._run_refresh_round()
+                summary.update(round_summary)
+                return summary
+            finally:
+                self._cross_process_lock.release()
 
     # ---- cron scheduling ----
 
@@ -745,4 +767,5 @@ class RefreshService:
 
     def stop_polling(self) -> None:
         self._is_polling = False
+        self._request_cancel_current_task("service stopping")
         logger.info("[REFRESH] stopping polling")

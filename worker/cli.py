@@ -485,7 +485,8 @@ def run_register_command(
     interactive: bool = False,
 ) -> None:
     from worker.config import config, config_manager
-    from worker.register_service import register_one
+    from worker.local_lock import LocalFileLock
+    from worker.register_service import register_one, stop_active_automation
 
     _print_header(_t("手动注册账号", "Manual Account Registration"))
 
@@ -532,31 +533,51 @@ def run_register_command(
     success_count = 0
     fail_count = 0
     start = time.time()
-
-    for i in range(register_count):
+    interrupted = False
+    lock = LocalFileLock(os.path.join("data", "automation.lock"))
+    if not lock.acquire(blocking=False):
         print(
-            f"\n[{i + 1}/{register_count}] "
-            f"{_t('开始注册', 'Start registering')} "
-            f"(provider={provider}{', domain=' + domain_value if provider == 'duckmail' and domain_value else ''})"
-        )
-        try:
-            result = register_one(
-                domain=(domain_value if provider == "duckmail" and domain_value else None),
-                mail_provider=provider,
+            _t(
+                "检测到本机已有自动化任务在运行（可能是 worker.main 或另一个 CLI），请先停止后再试。",
+                "Another local automation task is already running (worker.main or another CLI). Stop it first.",
             )
-        except Exception as exc:
-            result = {"success": False, "error": str(exc)}
+        )
+        return
 
-        if result.get("success"):
-            success_count += 1
-            print(f"✅ {_t('注册成功', 'Registered')}: {result.get('email', 'unknown')}")
-        else:
-            fail_count += 1
-            print(f"❌ {_t('注册失败', 'Failed')}: {result.get('error', 'unknown error')}")
+    try:
+        for i in range(register_count):
+            print(
+                f"\n[{i + 1}/{register_count}] "
+                f"{_t('开始注册', 'Start registering')} "
+                f"(provider={provider}{', domain=' + domain_value if provider == 'duckmail' and domain_value else ''})"
+            )
+            try:
+                result = register_one(
+                    domain=(domain_value if provider == "duckmail" and domain_value else None),
+                    mail_provider=provider,
+                )
+            except KeyboardInterrupt:
+                print(_t("\n⚠️ 收到中断信号，正在停止浏览器...", "\n⚠️ Interrupt received, stopping browser..."))
+                stop_active_automation()
+                raise
+            except Exception as exc:
+                result = {"success": False, "error": str(exc)}
 
-        if i < register_count - 1:
-            print(_t("等待 10 秒后继续下一次注册...", "Waiting 10s before next registration..."))
-            time.sleep(10)
+            if result.get("success"):
+                success_count += 1
+                print(f"✅ {_t('注册成功', 'Registered')}: {result.get('email', 'unknown')}")
+            else:
+                fail_count += 1
+                print(f"❌ {_t('注册失败', 'Failed')}: {result.get('error', 'unknown error')}")
+
+            if i < register_count - 1:
+                print(_t("等待 10 秒后继续下一次注册...", "Waiting 10s before next registration..."))
+                time.sleep(10)
+    except KeyboardInterrupt:
+        print(_t("已中断。", "Interrupted."))
+        interrupted = True
+    finally:
+        lock.release()
 
     elapsed = time.time() - start
     print("\n" + "=" * 60)
@@ -566,7 +587,7 @@ def run_register_command(
     print(f"{_t('耗时', 'Elapsed')}: {elapsed:.1f}s")
     print("=" * 60)
 
-    if interactive:
+    if interactive and not interrupted:
         persist_choice = input(
             _t(
                 "是否将本次提供商/域名写入本地 .env 作为默认？(y/N): ",

@@ -190,7 +190,16 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    from worker.local_lock import LocalFileLock
+
+    process_lock = LocalFileLock(os.path.join("data", "worker-main.lock"))
+    if not process_lock.acquire(blocking=False):
+        logger.error("[INIT] another worker.main process is already running")
+        sys.exit(1)
+
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
+    finally:
+        process_lock.release()
